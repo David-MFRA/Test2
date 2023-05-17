@@ -1,15 +1,45 @@
-name: Verificar Mensaje de Commit
+name: Check Commit Message Format
 
 on:
   pull_request:
     types:
       - opened
+      - synchronize
 
 jobs:
-  verificar:
+  check_commit_message:
     runs-on: ubuntu-latest
     
-    steps: 
-      - name: Comprobar Formato de Inicio de Commit
-        run:         
-            echo "El mensaje de commit no cumple con el formato de inicio requerido."
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Check commit message format
+        run: |
+          # Define un formato válido de mensaje de commit en la variable `commit_format`.
+          commit_format="#[A-Z]{2,}-[0-9]+ .+"        
+          
+          # Itera sobre cada commit en el PR.
+          for commit in $(git rev-list --no-merges --abbrev-commit origin/${{ github.base_ref }}..${{ github.sha }}); do
+            commit_message=$(git log --format=%B -n 1 $commit)
+            echo "Commit message: ${commit_message}"
+
+            # Elimina los caracteres diacríticos del mensaje de commit y el formato
+            # Además, pasa de mayúsculas a minúsculas. Esto permitirá comparaciones más flexibles
+            normalized_commit_message=$(echo ${commit_message} | iconv -f utf-8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]')
+            normalized_commit_format=$(echo ${commit_format} | iconv -f utf-8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]')
+            
+            echo ${normalized_commit_message}
+            echo ${normalized_commit_format}
+
+            # Verifica si el mensaje de commit coincide con el formato establecido.
+            if [[ ! ${normalized_commit_message} =~ ${normalized_commit_format} ]]; then            
+              # Muestra un mensaje de error si el formato del mensaje de commit es incorrecto.
+              echo "error: formato de mensaje de commit incorrecto en commit ${commit}. Formato esperado: ${commit_format}"
+              
+              # Finaliza la ejecución del flujo de trabajo con un código de salida 1.
+              exit 1            
+            fi
+          done
